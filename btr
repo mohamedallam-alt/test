@@ -175,14 +175,14 @@ export default class Btr extends React.Component<IBtrProps, IBtrState> {
   private fetchEmployeeData = async (email: string) => {
     try {
       const response = await fetch(
-        `xxxxxxxxxxxxV2?email=${encodeURIComponent(
+        `cccccccccccccccccccccByEmailV2?email=${encodeURIComponent(
           email
         )}`,
         {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            "x-api-key": "xxxxxxxxxxxxxxxx5",
+            "x-api-key": "cccccccccccccccccc",
           },
         }
       );
@@ -481,6 +481,7 @@ export default class Btr extends React.Component<IBtrProps, IBtrState> {
             <label>Justification</label>
             <textarea
               name="Justification"
+              value={this.state.Justification}
               onChange={this.handleChange}
               disabled={disabled}
             ></textarea>
@@ -541,6 +542,7 @@ export default class Btr extends React.Component<IBtrProps, IBtrState> {
               <input
                 name={field.name}
                 type={field.type || "text"}
+                value={(this.state as any)[field.name] ?? ""}
                 onChange={this.handleChange}
                 disabled={disabled}
               />
@@ -551,6 +553,7 @@ export default class Btr extends React.Component<IBtrProps, IBtrState> {
             <label>Cost Description</label>
             <textarea
               name="Description"
+              value={this.state.Description}
               onChange={this.handleChange}
               disabled={disabled}
             ></textarea>
