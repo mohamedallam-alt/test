@@ -228,14 +228,14 @@ export default class Btr extends React.Component<IBtrProps, IBtrState> {
   private fetchEmployeeData = async (email: string) => {
     try {
       const response = await fetch(
-        `https://spapi.jciarabia.com/api/SAP/GetSAPEmployeeByEmailV2?email=${encodeURIComponent(
+        `xxxxxxxxxxxxxxyEmailV2?email=${encodeURIComponent(
           email
         )}`,
         {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            "x-api-key": "6797B516-7A5C-418D-92C9-3C9E79820065",
+            "x-api-key": "xxxxxxxxxx5",
           },
         }
       );
