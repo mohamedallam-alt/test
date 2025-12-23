@@ -1,0 +1,55 @@
+export interface IBtrState {
+  EmployeeGlobalID: string;
+  EmployeeID: string;
+  NameAsPassport: string;
+  Company: string;
+  Department: string;
+  Branch: string;
+  JobTitle: string;
+
+  TripType: string;
+  TripPurpose: string;
+  Destination: string;
+  ProjectName: string;
+  StaffType: string;
+  ActivateRoaming: string;
+  RoamingType: string;
+  ReplacementPerson: string;
+  Justification: string;
+  //
+  DepartureCountry: string;
+  DestinationCountry: string;
+  DepartureCity: string;
+  DestinationCity: string;
+  //
+  DepartureDate: string;
+  ReturnDate: string;
+
+  TripDays: number;
+  PersonToContact: string;
+  Cost: number;
+  EntertainmentCost: number;
+  Description: string;
+  Comments: string;
+  FileUpload: File[];
+  Saving: boolean;
+
+  //
+  TripTypeChoices?: string[];
+  TripPurposeChoices?: string[];
+  StaffTypeChoices?: string[];
+  RoamingTypeChoices?: string[];
+  ActivateRoamingChoices?: string[];
+  DepartmentChoices?: string[];
+  BranchChoices?: string[];
+  //
+  DepartureCountryChoices?: string[];
+  DestinationCountryChoices?: string[];
+  DepartureCityChoices?: string[];
+  DestinationCityChoices?: string[];
+  //
+  AllCitiesData?: any[];
+  CountryChoices?: string[];
+  //
+  
+}
