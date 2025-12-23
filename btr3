@@ -1,0 +1,756 @@
+import * as React from "react";
+import "@pnp/sp/site-users";
+
+import {
+  IPeoplePickerContext,
+  PeoplePicker,
+  PrincipalType,
+} from "@pnp/spfx-controls-react/lib/PeoplePicker";
+
+import { IPersonaProps } from "@fluentui/react";
+import { FormCustomizerContext } from "@microsoft/sp-listview-extensibility";
+import { FormDisplayMode } from "@microsoft/sp-core-library";
+
+import type { IBtrState } from "./IBtrState";
+import styles from "./Btr.module.scss";
+//import { PersonaSize } from '@fluentui/react';
+import BtrService from "../services/BtrService";
+
+import { spfi, SPFI } from "@pnp/sp";
+import { SPFx } from "@pnp/sp/presets/all";
+
+//PROPS — DEFINED INSIDE THIS FILE (AS REQUESTED)
+export interface IBtrProps {
+  context: FormCustomizerContext;
+  displayMode: FormDisplayMode;
+  Id?: number;
+  onSave: () => void;
+  onClose: () => void;
+}
+
+export default class Btr extends React.Component<IBtrProps, IBtrState> {
+  private sp: SPFI;
+  private BtrService: BtrService;
+  private saved: boolean = false;
+  private attachments: Array<{ fileName: string; url?: string }> = [];
+
+  constructor(props: IBtrProps) {
+    super(props);
+
+    this.sp = spfi().using(SPFx(this.props.context));
+    this.BtrService = new BtrService(this.sp);
+
+    this.state = {
+      EmployeeGlobalID: "",
+      EmployeeID: "",
+      NameAsPassport: "",
+      Company: "",
+      Department: "",
+      Branch: "",
+      JobTitle: "",
+      TripType: "",
+
+      TripPurpose: "",
+      Destination: "",
+      ProjectName: "",
+      StaffType: "Office Staff",
+      ActivateRoaming: "",
+      RoamingType: "",
+
+      ReplacementPerson: "",
+      Justification: "",
+
+      DepartureCountry: "",
+      DestinationCountry: "",
+      DepartureCity: "",
+      DestinationCity: "",
+      DepartureDate: "",
+      ReturnDate: "",
+      TripDays: 0,
+      PersonToContact: "",
+      Cost: 0,
+      EntertainmentCost: 0,
+      Description: "",
+      Comments: "",
+      FileUpload: [],
+      Saving: false,
+    };
+  }
+
+  // INPUT HANDLER
+  private handleChange = async (event: any) => {
+    const { name, value } = event.target;
+
+    if (name === "TripType") {
+      const allCountries = this.state.CountryChoices || [];
+      const filteredCountries = value === "Domestic" 
+        ? ["Egypt", "Saudi Arabia", "Lebanon"] 
+        : allCountries;
+      this.setState({ TripType: value, DepartureCountryChoices: filteredCountries, DestinationCountryChoices: filteredCountries });
+      return;
+    }
+
+    this.setState({ [name]: value } as Pick<IBtrState, keyof IBtrState>);
+
+    // If a country is selected, load its cities and clear the corresponding city selection
+    try {
+      if (name === "DepartureCountry") {
+        const cities = await this.BtrService.getCitiesByCountry(value);
+        this.setState({ DepartureCityChoices: cities, DepartureCity: "" } as any);
+      } else if (name === "DestinationCountry") {
+        const cities = await this.BtrService.getCitiesByCountry(value);
+        this.setState({ DestinationCityChoices: cities, DestinationCity: "" } as any);
+      }
+    } catch (err) {
+      console.error("Error loading cities after country change", err);
+    }
+  };
+
+  private formatDateForInput = (isoDate: string): string => {
+    if (!isoDate) {
+      return "";
+    }
+    // Input type 'datetime-local' requires YYYY-MM-DDTHH:mm format
+    // SharePoint provides date in ISO 8601 format e.g., 2025-12-24T08:26:00Z
+    // We need to slice it to get the required part.
+    return isoDate.slice(0, 16);
+  };
+
+
+
+  //LOAD CHOICE FIELDS + USER
+  public async componentDidMount(): Promise<void> {
+
+    //
+    const isViewOrEdit = this.props.displayMode === FormDisplayMode.Display || this.props.displayMode === FormDisplayMode.Edit;
+    if (isViewOrEdit && this.props.Id) {
+      try {
+        const ticketData = await this.BtrService.getTicketById(this.props.Id!);
+        if (ticketData && ticketData.item) {
+          const itm = ticketData.item;
+          (this as any).setState({
+            EmployeeGlobalID: itm.Title || "",
+            EmployeeID: itm.EmpID || "",
+            NameAsPassport: itm.NameAsPassport || "",
+            Company: itm.Company || "",
+            Department: itm.Department || "",
+            Branch: itm.Branches || itm.Branch || "",
+            JobTitle: itm.Job_Title || itm.JobTitle || "",
+            TripType: itm.TripType || "",
+            TripPurpose: itm.Trip_Purpose || "",
+            ProjectName: itm.ProjectName || "",
+            StaffType: itm.StaffType || "Office Staff",
+            ActivateRoaming: itm.ActivateRoaming || "",
+            RoamingType: itm.RoamingType || "",
+            Justification: itm.Comments || itm.Justification || "",
+            DepartureCountry: itm.DepartureCountry || "",
+            DestinationCountry: itm.DestinationCountry || "",
+            DepartureCity: itm.DepartureCity || "",
+            DestinationCity: itm.DestinationCity || "",
+            DepartureDate: this.formatDateForInput(itm.Departure),
+            ReturnDate: this.formatDateForInput(itm.Returning),
+            TripDays: itm.TripDays || 0,
+            PersonToContact: itm.PersonToContactAtDistination || "",
+            Cost: itm.Cost || 0,
+            EntertainmentCost: itm.EntertainmentCost || 0,
+            Description: itm.Cost_Description || "",
+          });
+          this.attachments = ticketData.attachments || [];
+        }
+      } catch (e) {
+        console.error('Error loading ticket data', e);
+      }
+    }
+
+    //
+    try {
+      const [
+        tripTypeChoices,
+        tripPurposeChoices,
+        staffTypeChoices,
+        roamingTypeChoices,
+        activateRoamingChoices,
+      ] = await Promise.all([
+        this.BtrService.getChoiceFieldOptions("TripType"),
+        this.BtrService.getChoiceFieldOptions("Trip_Purpose"),
+        this.BtrService.getChoiceFieldOptions("StaffType"),
+        this.BtrService.getChoiceFieldOptions("RoamingType"),
+        this.BtrService.getChoiceFieldOptions("ActivateRoaming"),
+      ]);
+
+      this.setState({
+        TripTypeChoices: tripTypeChoices,
+        TripPurposeChoices: tripPurposeChoices,
+        StaffTypeChoices: staffTypeChoices,
+        RoamingTypeChoices: roamingTypeChoices,
+        ActivateRoamingChoices: activateRoamingChoices,
+      });
+
+      console.log(this.state.EmployeeGlobalID);
+
+      // Detect logged-in user's email
+      const currentUser = await this.sp.web.currentUser();
+
+      const userEmail = currentUser.Email;
+      console.log("Logged-in user email:", userEmail);
+
+      if (currentUser?.Email) {
+        await this.fetchEmployeeData(currentUser.Email);
+      }
+      // Load countries list from Cities list and pre-load cities for any selected countries
+      try {
+        const countries = await this.BtrService.getCountries();
+        
+        const isDomestic = this.state.TripType === "Domestic";
+        const currentCountries = isDomestic ? ["Egypt", "Saudi Arabia", "Lebanon"] : countries;
+
+        this.setState({ DepartureCountryChoices: currentCountries, DestinationCountryChoices: currentCountries, CountryChoices: countries } as any);
+
+        if (this.state.DepartureCountry) {
+          const depCities = await this.BtrService.getCitiesByCountry(this.state.DepartureCountry);
+          this.setState({ DepartureCityChoices: depCities } as any);
+        }
+        if (this.state.DestinationCountry) {
+          const destCities = await this.BtrService.getCitiesByCountry(this.state.DestinationCountry);
+          this.setState({ DestinationCityChoices: destCities } as any);
+        }
+      } catch (err) {
+        console.error("Error loading countries/cities:", err);
+      }
+    } catch (error) {
+      console.error("Initialization error", error);
+    }
+
+
+  }
+
+  //FETCH EMPLOYEE DATA
+  private fetchEmployeeData = async (email: string) => {
+    try {
+      const response = await fetch(
+        `https://spapi.jciarabia.com/api/SAP/GetSAPEmployeeByEmailV2?email=${encodeURIComponent(
+          email
+        )}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": "6797B516-7A5C-418D-92C9-3C9E79820065",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Employee data fetched from API:", data);
+
+      this.setState({
+        EmployeeGlobalID: data?.upn ?? "",
+        EmployeeID: data?.ssdCode ?? "",
+        Department: data?.departmentName ?? "",
+        Branch: data?.location ?? "",
+        Company: data?.legalEntityName ?? "",
+        JobTitle: data?.position ?? "",
+      });
+    } catch (error) {
+      console.error("Error fetching employee data:", error);
+      alert(
+        "Unable to fetch employee details. Please check the email or try again later."
+      );
+    }
+  };
+
+  //PEOPLE PICKER
+  private _getPeoplePickerItems = async (items: IPersonaProps[]) => {
+    if (items && items.length > 0) {
+      const selectedUser = items[0];
+      // The id from the persona prop is the user's login name/email
+      // const userEmail = selectedUser.id;
+      const userEmail = selectedUser.secondaryText;
+
+      console.log("Selected user email:", userEmail);
+
+      if (userEmail) {
+        this.setState({ EmployeeGlobalID: userEmail });
+        await this.fetchEmployeeData(userEmail);
+      }
+    } else {
+      // If no user is selected, clear the related fields
+      this.setState({
+        EmployeeGlobalID: "",
+        EmployeeID: "",
+        Company: "",
+        Department: "",
+        Branch: "",
+        JobTitle: "",
+      });
+    }
+  };
+
+  // SAVE FORM
+  private saveForm = async () => {
+    this.setState({ Saving: true });
+
+    const data = {
+      EmpID: this.state.EmployeeID,
+      NameAsPassport: this.state.NameAsPassport,
+      Company: this.state.Company,
+      Department: this.state.Department,
+      Branches: this.state.Branch,
+      Job_Title: this.state.JobTitle,
+      TripType: this.state.TripType,
+      Trip_Purpose: this.state.TripPurpose,
+      ProjectName: this.state.ProjectName,
+      StaffType: this.state.StaffType,
+      ActivateRoaming: this.state.ActivateRoaming,
+      RoamingType: this.state.RoamingType,
+      Comments: this.state.Justification,
+      Title: this.state.EmployeeGlobalID,
+      DepartureCountry: this.state.DepartureCountry,
+      DestinationCountry: this.state.DestinationCountry,
+      DepartureCity: this.state.DepartureCity,
+      DestinationCity: this.state.DestinationCity,
+      Departure: this.state.DepartureDate,
+      Returning: this.state.ReturnDate,
+
+      TripDays: this.state.TripDays,
+      PersonToContactAtDistination: this.state.PersonToContact,
+      Cost: this.state.Cost,
+      EntertainmentCost: this.state.EntertainmentCost,
+      Cost_Description: this.state.Description,
+
+      //TripDestination: this.state.TripDestination,
+      //ReplacementPerson: this.state.ReplacementPerson,
+    };
+
+    ////////////////////////////
+    console.log("Data being sent to SharePoint:", data);
+    try {
+      console.log("files beforce saved", this.state.FileUpload);
+      const itemId = await this.BtrService.saveRequest(data, this.state.FileUpload);
+      // after saving, load the saved item and switch to view-only state inside the form
+      try {
+        const ticketData = await this.BtrService.getTicketById(itemId);
+        if (ticketData && ticketData.item) {
+          const itm = ticketData.item;
+          (this as any).setState({
+            EmployeeGlobalID: itm.Title || "",
+            EmployeeID: itm.EmpID || "",
+            NameAsPassport: itm.NameAsPassport || "",
+            Company: itm.Company || "",
+            Department: itm.Department || "",
+            Branch: itm.Branches || itm.Branch || "",
+            JobTitle: itm.Job_Title || itm.JobTitle || "",
+            TripType: itm.TripType || "",
+            TripPurpose: itm.Trip_Purpose || "",
+            ProjectName: itm.ProjectName || "",
+            StaffType: itm.StaffType || "Office Staff",
+            ActivateRoaming: itm.ActivateRoaming || "",
+            RoamingType: itm.RoamingType || "",
+            Justification: itm.Comments || itm.Justification || "",
+            DepartureCountry: itm.DepartureCountry || "",
+            DestinationCountry: itm.DestinationCountry || "",
+            DepartureCity: itm.DepartureCity || "",
+            DestinationCity: itm.DestinationCity || "",
+            // DepartureDate: this.formatDateForInput(itm.Departure),
+            // ReturnDate: this.formatDateForInput(itm.Returning),
+            TripDays: itm.TripDays || 0,
+            PersonToContact: itm.PersonToContactAtDistination || "",
+            Cost: itm.Cost || 0,
+            EntertainmentCost: itm.EntertainmentCost || 0,
+            Description: itm.Cost_Description || "",
+          });
+          this.attachments = ticketData.attachments || [];
+          this.saved = true;
+        }
+      } catch (e) {
+        console.warn('Unable to load saved ticket', e);
+      }
+
+      alert("Travel request saved!");
+      // this.props.onSave();
+    } catch (error) {
+      console.error("Error saving travel request", error);
+      alert("Failed to save travel request. Please try again.");
+    } finally {
+      this.setState({ Saving: false });
+    }
+    ///////////////////////////
+  };
+
+    //RENDER
+
+    public render(): React.ReactElement<IBtrProps> {
+    if (this.props.displayMode === FormDisplayMode.New) {
+      return this.renderForm(FormDisplayMode.New);
+    } else if (this.props.displayMode === FormDisplayMode.Edit) {
+      return this.renderForm(FormDisplayMode.Edit);
+    } else if (this.props.displayMode === FormDisplayMode.Display) {
+      return this.renderForm(FormDisplayMode.Display);
+    }
+    return <div />;
+  }
+
+    private renderForm(mode: FormDisplayMode): React.ReactElement<IBtrProps> {
+       const disabled = mode === FormDisplayMode.Display || this.saved;
+       const peoplePickerContext: IPeoplePickerContext = {
+      absoluteUrl: this.props.context.pageContext.web.absoluteUrl,
+      spHttpClient: this.props.context.spHttpClient,
+      msGraphClientFactory: this.props.context.msGraphClientFactory,
+    };
+
+       return (
+      <div className={styles.formContainer}>
+        <h2 className={styles.sectionTitle}>Employee Information</h2>
+
+        <div className={styles.inputGroup}>
+          <div className={styles.inputField}>
+            <label>Employee</label>
+            <PeoplePicker
+              context={peoplePickerContext}
+              personSelectionLimit={1}
+              showtooltip={true}
+                      required={true}
+                      disabled={disabled}
+              onChange={this._getPeoplePickerItems}
+              showHiddenInUI={false}
+              principalTypes={[PrincipalType.User]}
+              resolveDelay={1000}
+              defaultSelectedUsers={
+                this.state.EmployeeGlobalID ? [this.state.EmployeeGlobalID] : []
+              }
+              //defaultSelectedUsers={[this.state.EmployeeGlobalID]}
+            />
+          </div>
+          {[
+            {
+              label: "Employee ID",
+              name: "EmployeeID",
+              value: this.state.EmployeeID,
+              disabled: true,
+            },
+            {
+              label: "Company",
+              name: "Company",
+              value: this.state.Company,
+              disabled: true,
+            },
+            {
+              label: "Department",
+              name: "Department",
+              value: this.state.Department,
+              disabled: true,
+            },
+            {
+              label: "Branchs",
+              name: "Branch",
+              value: this.state.Branch,
+              disabled: true,
+            },
+            {
+              label: "Job Title",
+              name: "JobTitle",
+              value: this.state.JobTitle,
+              disabled: true,
+            },
+            {
+              label: "Name As Passport",
+              name: "NameAsPassport",
+              value: this.state.NameAsPassport,
+            },
+            {
+              label: "Project Name",
+              name: "ProjectName",
+              value: this.state.ProjectName,
+            },
+          ].map((field) => (
+            <div className={styles.inputField} key={field.name}>
+              <label>{field.label}</label>
+              <input
+                name={field.name}
+                value={field.value}
+                onChange={this.handleChange}
+                    disabled={disabled || field.disabled || false} // Disable fields if specified
+              />
+            </div>
+          ))}
+
+          {[
+            {
+              label: "Trip Type",
+              name: "TripType",
+              choices: this.state.TripTypeChoices,
+              value: this.state.TripType,
+            },
+            {
+              label: "Trip Purpose",
+              name: "TripPurpose",
+              choices: this.state.TripPurposeChoices,
+              value: this.state.TripPurpose,
+            },
+            {
+              label: "Staff Type",
+              name: "StaffType",
+              choices: this.state.StaffTypeChoices,
+              value: this.state.StaffType,
+            },
+            {
+              label: "Activate Roaming",
+              name: "ActivateRoaming",
+              choices: this.state.ActivateRoamingChoices,
+              value: this.state.ActivateRoaming,
+            },
+            {
+              label: "Roaming Type",
+              name: "RoamingType",
+              choices: this.state.RoamingTypeChoices,
+              value: this.state.RoamingType,
+            },
+          ].map((field) => (
+            <div className={styles.inputField} key={field.name}>
+              <label>{field.label}</label>
+              <select
+                name={field.name}
+                value={field.value}
+                onChange={this.handleChange}
+                className={styles.chosenContainer}
+                disabled={disabled}
+              >
+                <option value="">Select...</option>
+                {field.choices &&
+                  field.choices.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          ))}
+
+          <div className={styles.inputField} style={{ flex: "1 1 100%" }}>
+            <label>Justification</label>
+            <textarea
+              name="Justification"
+              value={this.state.Justification}
+              onChange={this.handleChange}
+              disabled={disabled}
+            ></textarea>
+          </div>
+        </div>
+
+        <h2 className={styles.sectionTitle}>Ticket & Flight Details</h2>
+        <div className={styles.inputGroup}>
+          <div className={styles.inputField}>
+            <label>Departure Country</label>
+            <select
+              name="DepartureCountry"
+              value={this.state.DepartureCountry}
+              onChange={this.handleChange}
+              className={styles.chosenContainer}
+              disabled={disabled}
+            >
+              <option value="">Select...</option>
+              {this.state.DepartureCountryChoices &&
+                this.state.DepartureCountryChoices.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className={styles.inputField}>
+            <label>Departure City</label>
+            <select
+              name="DepartureCity"
+              value={this.state.DepartureCity}
+              onChange={this.handleChange}
+               className={styles.chosenContainer}
+              disabled={disabled || !(this.state.DepartureCityChoices && this.state.DepartureCityChoices.length)}
+            >
+              <option value="">Select...</option>
+              {this.state.DepartureCityChoices &&
+                this.state.DepartureCityChoices.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className={styles.inputField}>
+            <label>Destination Country</label>
+            <select
+              name="DestinationCountry"
+              value={this.state.DestinationCountry}
+              onChange={this.handleChange}
+              className={styles.chosenContainer}
+              disabled={disabled}
+            >
+              <option value="">Select...</option>
+              {this.state.DestinationCountryChoices &&
+                this.state.DestinationCountryChoices.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className={styles.inputField}>
+            <label>Destination City</label>
+            <select
+              name="DestinationCity"
+              value={this.state.DestinationCity}
+              onChange={this.handleChange}
+               className={styles.chosenContainer}
+              disabled={disabled || !(this.state.DestinationCityChoices && this.state.DestinationCityChoices.length)}
+            >
+              <option value="">Select...</option>
+              {this.state.DestinationCityChoices &&
+                this.state.DestinationCityChoices.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {/* remaining ticket fields */}
+          {[
+            {
+              label: "Departure Date-Time",
+              name: "DepartureDate",
+              type: "datetime-local",
+            },
+            {
+              label: "Returning Date-Time",
+              name: "ReturnDate",
+              type: "datetime-local",
+            },
+            {
+              label: "Trip Number Of Days",
+              name: "TripDays",
+              type: "number",
+            },
+            {
+              label: "Person To Contact",
+              name: "PersonToContact",
+            },
+            {
+              label: "Cost (SR)",
+              name: "Cost",
+              type: "number",
+            },
+            {
+              label: "Entertainment Cost (SR)",
+              name: "EntertainmentCost",
+              type: "number",
+            },
+          ].map((field) => (
+            <div className={styles.inputField} key={field.name}>
+              <label>{field.label}</label>
+              <input
+                name={field.name}
+                type={field.type || "text"}
+                value={(this.state as any)[field.name] ?? ""}
+                onChange={this.handleChange}
+                disabled={disabled}
+              />
+            </div>
+          ))}
+
+          <div className={styles.inputField} style={{ flex: "1 1 100%" }}>
+            <label>Cost Description</label>
+            <textarea
+              name="Description"
+              value={this.state.Description}
+              onChange={this.handleChange}
+              disabled={disabled}
+            ></textarea>
+          </div>
+        </div>
+
+        <div className={styles.fileUploadContainer}>
+          {!disabled && (
+            <>
+              <label className={styles.fileUploadLabel}>Attach a file below</label>
+              <div className={styles.fileDropZone}>
+                <div className={styles.fileIcon}></div>
+                <div className={styles.fileText}>
+                  <strong>Attach Files</strong>
+                  <br />
+                  <label htmlFor="fileInput" className={styles.clickHere}>
+                    Click Here
+                  </label>
+                </div>
+
+                <input
+                  id="fileInput"
+                  type="file"
+                  multiple
+                  className={styles.hiddenFileInput}
+                  onChange={(e) => {
+                    if (disabled) return;
+                    const files = Array.from(e.target.files || []);
+                    console.log(
+                      "📁 Files selected:",
+                      files.map((f) => f.name)
+                    );
+                    this.setState({ FileUpload: files } as any);
+                  }}
+                  disabled={disabled}
+                />
+              </div>
+            </>
+          )}
+
+          {/* show uploaded files (new) or attachments (view) */}
+          {this.state.FileUpload && this.state.FileUpload.length > 0 && !disabled && (
+            <div className={styles.attachmentList}>
+              <h4>Files to be uploaded:</h4>
+              <ul>
+                {this.state.FileUpload.map((file, index) => (
+                  <li key={index}>{file.name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(disabled && this.attachments && this.attachments.length > 0) && (
+            <div className={styles.attachmentList}>
+              <h4>Attached Files</h4>
+              <ul>
+                {this.attachments.map((a, idx) => (
+                  <li key={idx}>
+                    {a.url ? ( // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+                      <a href={a.url} target="_blank" rel="noreferrer">{a.fileName}</a>
+                    ) : (
+                      a.fileName
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {!disabled ? (
+          <button
+            className={styles.saveButton}
+            onClick={this.saveForm}
+            disabled={this.state.Saving}
+          >
+            {this.state.Saving ? "Saving..." : "Save Request"}
+          </button>
+        ) : (
+         null
+        )}
+      </div>
+    );
+    }
+
+
+}
