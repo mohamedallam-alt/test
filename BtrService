@@ -1,0 +1,108 @@
+import {  SPFI } from "@pnp/sp";
+import "@pnp/sp/webs";
+import "@pnp/sp/lists";
+import "@pnp/sp/items";
+import "@pnp/sp/attachments";
+import "@pnp/sp/fields";
+
+export default class BtrService {
+  private readonly listTitle = "BTR";
+  private readonly sp: SPFI;
+  properties: any;
+
+  constructor(sp: SPFI) {
+    if (!sp) {
+      throw new Error("SPFI instance is undefined");
+    }
+    this.sp = sp;
+  }
+
+
+  // CREATE ITEM + ATTACHMENTS (OPTIMIZED & SAFE)
+  public async saveRequest(data: any, files: File[] = []): Promise<number> {
+    console.log("📌 Creating list item", data);
+
+    // 1️⃣ Create item
+    console.log(data);
+    const addResult = await this.sp.web.lists
+      .getByTitle(this.listTitle)
+      .items.add(data);
+
+    // ✅ Get Id safely
+    debugger;
+    const itemId = addResult.Id;
+    console.log(`✅ Item created with ID: ${itemId}`);
+
+    // 2️⃣ Upload attachments
+    if (files.length > 0) {
+      for (const file of files) {
+        try {
+          // file is expected to be a File object from an <input type="file" />
+          const buffer = await (file as File).arrayBuffer();
+          await this.sp.web.lists
+            .getByTitle("BTR")
+            .items.getById(itemId)
+            .attachmentFiles.add((file as File).name, buffer as any);
+        } catch (err) {
+          console.error(
+            `Error uploading attachment ${
+              (file as File).name
+            } to item ${itemId}:`,
+            err
+          );
+        }
+      }
+    } else {
+      console.log("ℹ️ No attachments to upload");
+    }
+
+    return itemId;
+  }
+
+
+  // GET CHOICE FIELD VALUES (CACHED & SAFE)
+  public async getChoiceFieldOptions(fieldName: string): Promise<string[]> {
+    const field: any = await this.sp.web.lists
+      .getByTitle(this.listTitle)
+      .fields.getByInternalNameOrTitle(fieldName)();
+
+    return field?.Choices ?? [];
+  }
+
+  // GET ITEM BY ID + ATTACHMENTS
+  public async getTicketById(itemId: number): Promise<{ item?: any; attachments: Array<{ fileName: string; url?: string }> }> {
+    try {
+      const item: any = await this.sp.web.lists
+        .getByTitle(this.listTitle)
+        .items.getById(itemId)();
+
+      // fetch attachments (if any)
+      let attachments: Array<{ fileName: string; url?: string }> = [];
+      try {
+        const rawAttachments: any[] = await this.sp.web.lists
+          .getByTitle(this.listTitle)
+          .items.getById(itemId)
+          .attachmentFiles();
+
+        attachments = (rawAttachments || []).map((a: any) => ({
+          fileName: a?.FileName || a?.Name || "",
+          url: a?.ServerRelativeUrl || a?.serverRelativeUrl || a?.ServerUrl || undefined,
+        }));
+      } catch (attErr) {
+        console.warn(`Unable to load attachments for item ${itemId}`, attErr);
+      }
+
+      return { item, attachments };
+    } catch (err) {
+      console.error(`Error loading item ${itemId} from list ${this.listTitle}:`, err);
+      return { attachments: [] };
+    }
+  }
+
+
+
+
+   
+
+  
+}
